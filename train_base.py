@@ -37,8 +37,8 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7,8,9"
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "9"
 
 torch.cuda.empty_cache()
 
@@ -53,7 +53,7 @@ def evaluate_loss(model, dataloader, loss_fn, text_field):
             for it, (detections,ad_matrix, captions) in enumerate(dataloader):
                 detections, ad_matrix, captions = detections.to(device), ad_matrix.to(device), captions.to(device)
                 #detections, captions = detections, captions
-                
+
                 out = model(detections,ad_matrix, captions)
                 captions = captions[:, 1:].contiguous()
                 out = out[:, :-1].contiguous()
@@ -87,13 +87,13 @@ def evaluate_metrics(model, dataloader, text_field):
             #print(caps_gt)
 
             #images = images
-            
+
             with torch.no_grad():
                 out, _ = model.beam_search(images,ad_matrix,20, text_field.vocab.stoi['<eos>'], 5, out_size=1)
             caps_gen = text_field.decode(out, join_words=False)
             for i, (gts_i, gen_i) in enumerate(zip(caps_gt, caps_gen)):
                 gen_i = ' '.join([k for k, g in itertools.groupby(gen_i)])
-                gen['%d_%d' % (it, i)] = [gen_i, ]    
+                gen['%d_%d' % (it, i)] = [gen_i, ]
                 gts['%d_%d' % (it, i)] = gts_i
             pbar.update()
 
@@ -114,12 +114,12 @@ def train_xe(model, dataloader, optim, text_field):
             #detections, captions = detections, captions
             #print('!!!')
             #print(captions)
-            
+
             out = model(detections,ad_matrix, captions) #(10,18,45)
             optim.zero_grad()
             captions_gt = captions[:, 1:].contiguous()
-            
-            
+
+
             out = out[:, :-1].contiguous()
 
             #labelsmoothing
@@ -141,7 +141,7 @@ def train_xe(model, dataloader, optim, text_field):
             scheduler.step()
 
     loss = running_loss / len(dataloader)
-    
+
     return loss
 
 
@@ -194,7 +194,7 @@ def train_scst(model, dataloader, optim, cider, text_field):
             reward = cider.compute_score(caps_gt, caps_gen)[1].astype(np.float32)
             reward = torch.from_numpy(reward).to(device).view(detections.shape[0], beam_size)
             #reward = torch.from_numpy(reward).view(detections.shape[0], beam_size)
-            
+
             reward_baseline = torch.mean(reward, -1, keepdim=True)
             loss = -torch.mean(log_probs, -1) * (reward - reward_baseline)
 
@@ -221,21 +221,21 @@ if __name__ == '__main__':
     parser.add_argument('--exp_name', type=str, default='m2_transformer')
     parser.add_argument('--batch_size', type=int, default=10)
     parser.add_argument('--workers', type=int, default=6)
-    parser.add_argument('--m', type=int, default=6)   #momory个数
+    parser.add_argument('--m', type=int, default=48)
     parser.add_argument('--head', type=int, default=8)
     parser.add_argument('--warmup', type=int, default=10000)
     parser.add_argument('--resume_last', action='store_true')
     parser.add_argument('--resume_best', action='store_true')
-    parser.add_argument('--features_path', default='/data/zfzhu/lc/m2transformer/features/instruments18_caption/')   #特征
-    #parser.add_argument('--features_path', default='E:/m2transformer/features/instruments18_caption/')   #特征
-    parser.add_argument('--annotation_folder', type=str, default = 'annotations/annotations')   #标记
+    parser.add_argument('--features_path', default='/data/zfzhu/lc/m2transformer/features/instruments18_caption/')
+    #parser.add_argument('--features_path', default='E:/m2transformer/features/instruments18_caption/')
+    parser.add_argument('--annotation_folder', type=str, default = 'annotations/annotations')
     parser.add_argument('--logs_folder', type=str, default='tensorboard_logs')
     args = parser.parse_args()
     print(args)
 
     print('Training')
 
- #绘制loss图
+
     writer = SummaryWriter(log_dir=os.path.join(args.logs_folder, args.exp_name))
 
     # Pipeline for image regions
@@ -246,40 +246,40 @@ if __name__ == '__main__':
     # Pipeline for text
     text_field = TextField(init_token='<bos>', eos_token='<eos>', lower=True, tokenize='spacy',
                            remove_punctuation=True, nopoints=False)
-    
+
     # Create the dataset
     dataset = COCO(image_field,ad_matrix_field,text_field, args.features_path, args.annotation_folder, args.annotation_folder)
 
-    train_dataset, val_dataset = dataset.splits   
-    
+    train_dataset, val_dataset = dataset.splits
+
     print("-"*100)
     print(len(train_dataset))   #1124
     print(len(val_dataset))     #392
-    
-   #创建字典
+
+
     if not os.path.isfile('vocab_%s.pkl' % args.exp_name):
         print("Building vocabulary")
-        text_field.build_vocab(train_dataset, val_dataset, min_freq=2)  
+        text_field.build_vocab(train_dataset, val_dataset, min_freq=2)
         pickle.dump(text_field.vocab, open('vocab_%s.pkl' % args.exp_name, 'wb'))
     else:
         text_field.vocab = pickle.load(open('vocab_%s.pkl' % args.exp_name, 'rb'))
 
-    print(len(text_field.vocab))  #45
-    print(text_field.vocab.stoi)   #stoi把字符映射成数字
+    print(len(text_field.vocab))
+    print(text_field.vocab.stoi)
 
-    memory = np.load('random_6.npy')
+    memory = np.load('memory48.npy')
     memory = memory[np.newaxis,:]
 
     # Model and dataloaders
     encoder = MemoryAugmentedEncoder(3, 0, memory,attention_module=ScaledDotProductAttentionMemory,
                                      attention_module_kwargs={'m': args.m})
     decoder = MeshedDecoder(len(text_field.vocab), 54, 3, text_field.vocab.stoi['<pad>'])
-    
+
     model = Transformer(text_field.vocab.stoi['<bos>'], encoder, decoder).to(device)
 
-    
 
-    
+
+
 
     dict_dataset_train = train_dataset.image_dictionary({'image': image_field,'ad_matrix':ad_matrix_field, 'text': RawField()})
     #print(len(dict_dataset_train))  #1124
@@ -306,10 +306,8 @@ if __name__ == '__main__':
     optim = Adam(model.parameters(), lr=0.5, betas=(0.9, 0.98))
     scheduler = LambdaLR(optim, lambda_lr)
     loss_fn = NLLLoss(ignore_index=text_field.vocab.stoi['<pad>'])
-    #loss_ls_v2 = CELossWithLS(classes=len(text_field.vocab), smoothing=0.0, gamma=0.0, isCos=False, ignore_index=text_field.vocab.stoi['<pad>']) # classes = 45 / 49
     use_rl = False
     best_cider = .0
-    #best_bleu = .0
     patience = 0
     start_epoch = 0
     best_epoch = 0
@@ -343,20 +341,19 @@ if __name__ == '__main__':
     print("Training starts")
     #print(start_epoch)
 
-    for e in range(start_epoch, start_epoch+100):  
-    #加载数据
+    for e in range(start_epoch, start_epoch+100):
         dataloader_train = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
                                       drop_last=True)
-        
 
-        dataloader_val = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
-        
+
+        dataloader_val = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers,drop_last=True)
+
         dict_dataloader_train = DataLoader(dict_dataset_train, batch_size=args.batch_size // 5, shuffle=True,
-                                           num_workers=args.workers)
-        dict_dataloader_val = DataLoader(dict_dataset_val, batch_size=args.batch_size // 5)
-        
+                                           num_workers=args.workers,drop_last=True)
+        dict_dataloader_val = DataLoader(dict_dataset_val, batch_size=args.batch_size // 5,drop_last=True)
 
-        # train model with a word-level cross-entropy loss(xe) 
+
+        # train model with a word-level cross-entropy loss(xe)
         if not use_rl:
             train_loss = train_xe(model, dataloader_train, optim, text_field)
             writer.add_scalar('data/train_loss', train_loss, e)
@@ -366,27 +363,26 @@ if __name__ == '__main__':
             writer.add_scalar('data/reward', reward, e)
             writer.add_scalar('data/reward_baseline', reward_baseline, e)
 
-            
-       
+
+
         # Validation loss
         val_loss = evaluate_loss(model, dataloader_val, loss_fn, text_field)
         writer.add_scalar('data/val_loss', val_loss, e)
-    
+
         # Validation scores
         scores = evaluate_metrics(model, dict_dataloader_val, text_field)
         print("Validation scores", scores)
-        
+
         val_cider = scores['CIDEr']
-        
+
         writer.add_scalar('data/val_cider', val_cider, e)
         writer.add_scalar('data/val_bleu1', scores['BLEU'][0], e)
         writer.add_scalar('data/val_bleu4', scores['BLEU'][3], e)
         writer.add_scalar('data/val_meteor', scores['METEOR'], e)
         writer.add_scalar('data/val_rouge', scores['ROUGE'], e)
-   
+
         # Prepare for next epoch
         best = False
-        #如果当前epoch的cider值大于best更新best值，否则patience+1
         if val_cider >= best_cider:
             best_bleu = scores['BLEU'][0]
             best_cider = val_cider
@@ -394,14 +390,14 @@ if __name__ == '__main__':
             best = True
         else:
             patience += 1
-        
+
         print('patiece')
-        print(patience)  
-        
+        print(patience)
+
         switch_to_rl = False
         exit_train = False
-        
-        #当patience=10时，切换到RL学习
+
+
         if patience == 10:
             if not use_rl:
                 use_rl = True
@@ -441,7 +437,7 @@ if __name__ == '__main__':
             'patience': patience,
             'best_cider': best_cider,
             'use_rl': use_rl,
-        }, 'saved_models/%s_last.pth' % args.exp_name)   
+        }, 'saved_models/%s_last.pth' % args.exp_name)
 
         if best:
             print('saving best epoch...!')
@@ -450,14 +446,4 @@ if __name__ == '__main__':
         if exit_train:
             writer.close()
             break
-       
-    # data = torch.load('saved_models/m2_transformer_best.pth')
-    # model.load_state_dict(data['state_dict'])
-    # print("Epoch %d" % data['epoch'])
-    # print(data['best_cider'])
-
-
-
-
-
 

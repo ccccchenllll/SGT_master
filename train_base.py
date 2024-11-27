@@ -43,7 +43,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "9"
 torch.cuda.empty_cache()
 
 
-#测试损失
+
 def evaluate_loss(model, dataloader, loss_fn, text_field):
     # Validation loss
     model.eval()
@@ -67,7 +67,7 @@ def evaluate_loss(model, dataloader, loss_fn, text_field):
     val_loss = running_loss / len(dataloader)
     return val_loss
 
-#指标
+
 def evaluate_metrics(model, dataloader, text_field):
     import itertools
     model.eval()
@@ -102,7 +102,7 @@ def evaluate_metrics(model, dataloader, text_field):
     scores, _ = evaluation.compute_scores(gts, gen)
     return scores
 
-#交叉熵损失训练
+
 def train_xe(model, dataloader, optim, text_field):
     # Training with cross-entropy
     model.train()
@@ -122,14 +122,8 @@ def train_xe(model, dataloader, optim, text_field):
 
             out = out[:, :-1].contiguous()
 
-            #labelsmoothing
-            #loss_labelsmoothing = loss_ls_v2(out, captions_gt)
-            #loss_labelsmoothing.backward()
-            #optim.step()
-            #this_loss = loss_labelsmoothing.item()
-            #running_loss += this_loss
 
-            #original(no labelsmoothing)
+
             loss = loss_fn(out.view(-1,len(text_field.vocab)),captions_gt.view(-1))
             loss.backward()
             optim.step()
@@ -145,27 +139,7 @@ def train_xe(model, dataloader, optim, text_field):
     return loss
 
 
-# class CELossWithLS(torch.nn.Module):
-#     def __init__(self, classes=None, smoothing=0.1, gamma=3.0, isCos=True, ignore_index=-1):
-#         super(CELossWithLS, self).__init__()
-#         self.complement = 1.0 - smoothing
-#         self.smoothing = smoothing
-#         self.cls = classes
-#         self.log_softmax = torch.nn.LogSoftmax(dim=1)
-#         self.gamma = gamma
-#         self.ignore_index = ignore_index
-#
-#     def forward(self, logits, target):
-#         with torch.no_grad():
-#             oh_labels = F.one_hot(target.to(torch.int64), num_classes = self.cls).permute(0,1,2).contiguous()
-#             smoothen_ohlabel = oh_labels * self.complement + self.smoothing / self.cls
-#
-#         logs = self.log_softmax(logits[target!=self.ignore_index])
-#         pt = torch.exp(logs)
-#         return -torch.sum((1-pt).pow(self.gamma)*logs * smoothen_ohlabel[target!=self.ignore_index], dim=1).mean()
 
-
-#RL
 def train_scst(model, dataloader, optim, cider, text_field):
     # Training with self-critical
     tokenizer_pool = multiprocessing.Pool()

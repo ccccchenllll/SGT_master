@@ -20,7 +20,7 @@ import warnings
 warnings.filterwarnings("ignore")
 import os, json
 from torch.utils.tensorboard import SummaryWriter
-from Evison import Display, show_network
+# from Evison import Display, show_network
 import matplotlib.pyplot as plt
 random.seed(1234)
 torch.manual_seed(1234)
@@ -36,14 +36,15 @@ def evaluate_metrics(model, dataloader, text_field):
 
         for it, (images, caps_gt) in enumerate(iter(dataloader)):
             images = images.to(device)
+            bs = images.size(0)
 
             ad_matrix = caps_gt[0]
-            ad_matrix = torch.cat(ad_matrix, dim=1).reshape(1, 10, 10).to(device)
+            ad_matrix = torch.cat(ad_matrix, dim=1).reshape(bs, 10, 10).to(device)
             # print(ad_matrix)
             # print(ad_matrix.type)
 
             caps_gt = caps_gt[1]
-            print(caps_gt)
+            # print(caps_gt)
 
             # images = images
 
@@ -78,7 +79,7 @@ if __name__ == '__main__':
     parser.add_argument('--m', type=int, default=48)
     parser.add_argument('--features_path', default='/data/zfzhu/lc/m2transformer/features/instruments18_caption/')   #特征
     #parser.add_argument('--features_path', default='/data/zfzhu/lc/m2transformer/features/instruments18_caption/')   #特征
-    parser.add_argument('--annotation_folder', type=str, default = 'annotations/annotations')   #标记
+    parser.add_argument('--annotation_folder', type=str, default = '/data/zfzhu/lc/m2transformer/annotations/annotations')   #标记
     args = parser.parse_args()
 
     print('Meshed-Memory Transformer Evaluation')
@@ -103,7 +104,7 @@ if __name__ == '__main__':
 
     text_field.vocab = pickle.load(open('vocab_%s.pkl' % args.exp_name, 'rb'))
 
-    memory = np.load('memery_random48.npy')
+    memory = np.load('memory48.npy')
     memory = memory[np.newaxis,:]
 
     # Model and dataloaders
@@ -114,7 +115,7 @@ if __name__ == '__main__':
 
     model = Transformer(text_field.vocab.stoi['<bos>'], encoder, decoder).to(device)
 
-    data = torch.load('/data/zfzhu/lc/m2transformer/saved_models/m2_transformer_best.pth')
+    data = torch.load('/data/zfzhu/lc/SGT-MICCAI/saved_models/m2_transformer_best.pth')
     #print(model)
 
 
